@@ -1,17 +1,9 @@
-#include <algorithm>
-#include <assert.h>
 #include <bitset>
 #include <functional>
-#include <charconv>
-#include <string_view>
 #include <initializer_list>
 #include <stddef.h>
 #include <stdint.h>
 #include <utility>
-
-#include "encoding.out.h"
-
-#define UnreachableAbort() perror("Unreachable code executed"), assert(0);
 
 // -- Output Instruction Helper --
 
@@ -104,8 +96,7 @@ enum class ExceptionCode {
 #define eei_ecall_from_u() UnreachableAbort();
 #define eei_ecall_from_vs() UnreachableAbort();
 
-void raise_precise(ExceptionCode code, PrivilegeMode mode, uint32_t tval);
-void raise(ExceptionCode code, PrivilegeMode mode, uint32_t tval);
+// -- IDL Helper --
 
 #define MXLEN 32u
 #define xlen() MXLEN
@@ -122,24 +113,17 @@ using dword_t = uint64_t;
 
 using RegFile = word_t[];
 
-// wrap IDL call outer functions
-
-extern "C" word_t vaddr_read(word_t address, int size);
-extern "C" void vaddr_write(word_t address, int size, word_t value);
-
-template <size_t N> word_t read_memory(uint32_t address, int encoding) {
-  static_assert(N % 8 == 0);
-  return vaddr_read(address, N / 8);
+inline uint64_t sext64(uint64_t value, int width) {
+  if (width >= 64)
+    return value;
+  uint64_t sign_bit = 1ull << (width - 1);
+  if (value & sign_bit) {
+    uint64_t mask = ~((1ull << width) - 1);
+    return value | mask;
+  } else {
+    return value & ((1ull << width) - 1);
+  }
 }
-template <size_t N>
-void write_memory(uint32_t address, uint32_t value, int encoding) {
-  static_assert(N % 8 == 0);
-  vaddr_write(address, N / 8, value);
-}
-
-extern "C" void wait_for_interrupt();
-inline void wfi() { wait_for_interrupt(); }
-
 inline uint32_t sext32(uint32_t value, int width) {
   if (width >= 32)
     return value;
@@ -152,44 +136,57 @@ inline uint32_t sext32(uint32_t value, int width) {
   }
 }
 
-inline sword_t sext(word_t value, int width) {
 #if MXLEN == 32
-  return static_cast<sword_t>(sext32(static_cast<uint32_t>(value), width));
+#define sext(value, width) sext32((uint32_t)(value), (width))
 #else
+#define sext(value, width) sext64((uint64_t)(value), (width))
 #endif
-}
 
 inline dword_t selbits(dword_t value, int high, int low) {
-  if (high >= (sizeof(dword_t) * 8 - 1) && low == 0)
+  if (high >= 63 && low == 0)
     return value;
-  dword_t mask = ((WIDER_UNIT << (high - low + 1)) - 1) << low;
+  dword_t mask = ((1ull << (high - low + 1)) - 1) << low;
   return (value & mask) >> low;
 }
 
-template <typename Func> struct _OpFuncTraits {};
+template <typename T> struct _TailCast {};
+template <typename T, typename LT>
+inline T operator*(LT value, const _TailCast<T> &) {
+  return T(value);
+}
+
+template <typename Func>
+struct _OpFuncTraits : _OpFuncTraits<decltype(&Func::operator())> {};
+
 template <typename R, typename L, typename R2> struct _OpFuncTraits<R(L, R2)> {
   using RawFn = R(L, R2);
-  using FnPtr = R (*)(L, R2);
+  using FuncType = std::function<RawFn>;
 
   using Left = std::remove_reference_t<L>;
   using Right = std::remove_reference_t<R2>;
-  using Ret = R;
+  using Out = R;
 };
 
 template <typename R, typename L, typename R2>
 struct _OpFuncTraits<R (*)(L, R2)> : _OpFuncTraits<R(L, R2)> {};
 
+template <typename C, typename R, typename L, typename R2>
+struct _OpFuncTraits<R (C::*)(L, R2) const> : _OpFuncTraits<R(L, R2)> {};
+
+template <typename C, typename R, typename L, typename R2>
+struct _OpFuncTraits<R (C::*)(L, R2)> : _OpFuncTraits<R(L, R2)> {};
+
 template <typename Func> struct _OpFunc_Wrap {
   using traits = _OpFuncTraits<Func>;
-  using Fn = typename traits::FnPtr;
+  using func_t = typename traits::FuncType;
   using L = typename traits::Left;
   using R = typename traits::Right;
-  using Ret = typename traits::Ret;
-  Fn func;
+  using Out = typename traits::Out;
+  func_t func;
   L left;
-  _OpFunc_Wrap(Fn f) : func(f) {}
-  Ret operator*(R right) { return func(left, right); }
-  Ret operator>>(R right) { return func(left, right); }
+  _OpFunc_Wrap(func_t f) : func(f) {}
+  Out operator*(R right) { return func(left, right); }
+  Out operator>>(R right) { return func(left, right); }
 };
 template <typename Func>
 inline _OpFunc_Wrap<Func> operator*(typename _OpFuncTraits<Func>::Left left,
@@ -198,25 +195,28 @@ inline _OpFunc_Wrap<Func> operator*(typename _OpFuncTraits<Func>::Left left,
   return wrapper;
 }
 
-#define _Wrap(func) _OpFunc_Wrap<decltype(func)>(func)
+#define _WrapOp(func) _OpFunc_Wrap<decltype(func)>(func)
+#define ApplyOP(func) *_OpFunc_Wrap<decltype(func)>(func) *
 
 inline uint32_t _op_sra32(uint32_t value, uint32_t shamt) {
+	if(shamt == 0) return value;
   if (shamt >= 32) {
     return (value & 0x80000000) ? 0xFFFFFFFF : 0;
   } else {
     if (value & 0x80000000) {
+			// when shamt is 0, << 32 is undefined behavior
       return (value >> shamt) | (~((uint32_t)0) << (32 - shamt));
     } else {
       return value >> shamt;
     }
   }
 }
-#define Sra *_Wrap(_op_sra32) >>
+#define SRA *_WrapOp(_op_sra32) >>
 
 inline auto _op_selbits(dword_t value, std::pair<int, int> rng) {
   return selbits(value, rng.first, rng.second);
 }
-#define Rng(high, low) _Wrap(_op_selbits) * std::make_pair((high), (low))
+#define Rng(high, low) _WrapOp(_op_selbits) * std::make_pair((high), (low))
 #define At(bit) Rng((bit), (bit))
 
 struct Concat {
@@ -238,32 +238,57 @@ struct Concat {
 };
 
 template <size_t N> struct Bits {
-	static constexpr size_t width = N;
-  dword_t value;
-  constexpr Bits(dword_t value = 0) : value(value) {}
-  constexpr operator dword_t() const { return value; }
+  // std::bitset<N> value;
+  using dword = dword_t;
+  dword value;
+  constexpr Bits(dword value = 0) : value(value) {}
+  constexpr operator dword() const { return value; }
   constexpr operator Concat() const { return Concat(N, value); }
 
   Bits(const Concat &c) : value(c.value) {}
 
-  template <size_t M> Bits(const Bits<M> &other) : value(other.value) {}
+	template <size_t M>
+	Bits(const Bits<M> &other) : value(other.value) {
+	}
 
-  Bits<MXLEN> sign_extend() const { return Bits<MXLEN>(sext(value, N)); }
-  template <size_t shamt> Bits<N + shamt> lshift_extend() const {
-    return Bits<N + shamt>(value << shamt);
-  }
+  Bits<MXLEN> sign_extend() const { return Bits<MXLEN>(::sext(value, N)); }
+	template <size_t shamt>
+  Bits<N+shamt> left_pad() const { return Bits<N+shamt>(value << shamt); }
   bool operator[](size_t bitidx) const { return (value >> bitidx) & 0x1; }
+
+	bool _eq(uint64_t rhs) const {
+		if constexpr (N <= MXLEN) {
+			return (word_t)value == (word_t)rhs;
+		} else {
+			return value == rhs;
+		}
+	}
+
+	bool operator==(const Bits<N> &rhs) const {
+		return _eq(rhs.value);
+	}
+	bool operator==(int rhs) const {
+		return _eq(rhs);
+	}
+	bool operator==(Concat rhs) const {
+		return _eq(rhs.value);
+	}
+
 };
+
+inline bool operator<(word_t lhs, const Bits<MXLEN> &rhs){
+	return lhs < (word_t)rhs.value;
+}
+inline bool operator<(const Bits<MXLEN> &lhs, const Bits<MXLEN> &rhs){
+	return lhs.value < rhs.value;
+}
 
 using XReg = Bits<MXLEN>;
 
-template <size_t N> inline sword_t sext(const Bits<N> &bits) {
+template <size_t N> inline sword_t as_signed(const Bits<N> &bits) {
   return sext(bits.value, N);
 }
-inline XReg sext(word_t value) { return XReg(sext(value, MXLEN)); }
-inline Concat sext(const Concat &c){
-	return Concat(MXLEN, sext(c.value, c.len));
-}
+inline sword_t as_signed(word_t value) { return static_cast<sword_t>(value); }
 
 template <size_t N> struct Repl {
   dword_t value;
@@ -278,4 +303,15 @@ template <size_t N> struct Repl {
   }
 };
 
+extern "C" word_t vaddr_read(word_t address, int size);
+extern "C" void vaddr_write(word_t address, int size, word_t value);
 
+template <size_t N> word_t read_memory(uint32_t address, int encoding) {
+  static_assert(N % 8 == 0, "read_memory size must be multiple of 8");
+  return vaddr_read(address, N / 8);
+}
+template <size_t N>
+void write_memory(uint32_t address, uint32_t value, int encoding) {
+  static_assert(N % 8 == 0, "write_memory size must be multiple of 8");
+  vaddr_write(address, N / 8, value);
+}

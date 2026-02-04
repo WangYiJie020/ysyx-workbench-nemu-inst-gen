@@ -8,10 +8,10 @@ db_inst_dir = os.path.expanduser("~/gitclones/riscv-unified-db/spec/std/isa/inst
 ignore_insts = set([
     "fence",
     "fence.tso",
-    # "ebreak",
-    # "ecall",
-    # "mret",
-    # "wfi",
+    "ebreak",
+    "ecall",
+    "mret",
+    "wfi",
     # "ld","sd",
 ])
 
@@ -161,7 +161,9 @@ def generate_for_inst(ext_name:str,inst_name:str) -> str:
     op = re.sub(r"compatible_mode\?", "compatible_mode", op)
 
     # replace CSR[csr_name]
-    op = re.sub(r"CSR\[(\w+)\]", lambda m: f"CSR[CSR_{m.group(1).upper()}]", op)
+    # op = re.sub(r"CSR\[(\w+)\]", lambda m: f"CSR[CSR_{m.group(1).upper()}]", op)
+    op = re.sub(r"CSR\[misa\]\.M", "Bits<1>(1)", op)
+    op = re.sub(r"CSR\[(\w+)\].(\w+)", "false /* CSR[\\1].\\2 not implemented */", op)
 
     res += op
     res = add_tab(res)
@@ -176,7 +178,7 @@ print("""// Auto-generated code
 
 // return 0 if instruction matched and executed
 extern "C" int execute_instruction(word_t ENCODING_INST, word_t* pc, word_t* regs) {
-	INIT();
+  INIT();
 """)
 
 def gen_ext(ext_name:str):
