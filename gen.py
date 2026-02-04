@@ -173,7 +173,6 @@ print("""// Auto-generated code
 // Do not edit manually!
 
 #include "IDLHlper.hpp"
-#include "csr.hpp"
 
 // return 0 if instruction matched and executed
 extern "C" int execute_instruction(word_t ENCODING_INST, word_t* pc, word_t* regs) {
