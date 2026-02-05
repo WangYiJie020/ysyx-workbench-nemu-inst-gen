@@ -268,7 +268,7 @@ using XReg = Bits<MXLEN>;
 template <size_t N> inline sword_t sext(const Bits<N> &bits) {
   return sext(bits.value, N);
 }
-inline XReg sext(word_t value) { return XReg(sext(value, MXLEN)); }
+inline sword_t sext(word_t value) { return sext(value, MXLEN); }
 inline Concat sext(const Concat &c) {
   return Concat(MXLEN, sext(c.value, c.len));
 }
