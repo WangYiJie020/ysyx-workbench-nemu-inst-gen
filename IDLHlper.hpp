@@ -263,6 +263,12 @@ template <size_t N> struct Bits {
   bool operator[](size_t bitidx) const { return (value >> bitidx) & 0x1; }
 };
 
+inline bool operator<(word_t lhs, const Bits<MXLEN> &rhs){
+	return lhs < (word_t)rhs.value;
+}
+inline bool operator<(const Bits<MXLEN> &lhs, const Bits<MXLEN> &rhs){
+	return lhs.value < rhs.value;
+}
 using XReg = Bits<MXLEN>;
 
 template <size_t N> inline sword_t sext(const Bits<N> &bits) {
