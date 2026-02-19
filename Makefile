@@ -27,6 +27,7 @@ testcompile: IDLHlper.hpp $(OUT_CC)
 	clang++ -I$(BUILD_DIR) $(TESTCXXSRCS) -o $(BUILD_DIR)/testcompile
 	rm $(BUILD_DIR)/testcompile
 
+.DELETE_ON_ERROR:
 $(OUT_CC): gen.py
 	$(PYTHON) gen.py > $(OUT_CC)
 
