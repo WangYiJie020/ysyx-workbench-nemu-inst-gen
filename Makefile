@@ -11,6 +11,15 @@ OUT_CC = $(BUILD_DIR)/out.cc
 TESTCXXSRCS = $(shell find $(BUILD_DIR) -name '*.cc')
 TESTCXXSRCS += ./foomain.cc
 
+# ENCODE_GEN_REPO = repo
+# ifeq ($(wildcard $(ENCODE_GEN_REPO)/Makefile),)
+#   $(shell git clone https://github.com/riscv/riscv-opcodes.git $(ENCODE_GEN_REPO))
+# endif
+#
+# ENCODE_OUT_H = $(ENCODE_GEN_REPO)/encoding.out.h
+# $(ENCODE_OUT_H):
+# 	$(MAKE) -C $(ENCODE_GEN_REPO) encoding.out.h
+#
 
 default: geninc
 
