@@ -1,7 +1,7 @@
 VENV ?= .
 PYTHON := $(VENV)/bin/python
 
-BUILD_DIR = ./build
+BUILD_DIR ?= ./build
 
 $(shell mkdir -p $(BUILD_DIR))
 
