@@ -168,7 +168,7 @@ inline sword_t sext(word_t value, int width) {
 }
 
 inline dword_t selbits(dword_t value, int high, int low) {
-  if (high >= (sizeof(dword_t) * 8 - 1) && low == 0)
+  if (high >= (int)(sizeof(dword_t) * 8 - 1) && low == 0)
     return value;
   dword_t mask = ((WIDER_UNIT << (high - low + 1)) - 1) << low;
   return (value & mask) >> low;
