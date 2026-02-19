@@ -1,4 +1,4 @@
-VENV := .
+VENV ?= .
 PYTHON := $(VENV)/bin/python
 
 BUILD_DIR = ./build
