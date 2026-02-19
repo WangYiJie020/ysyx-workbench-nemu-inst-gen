@@ -3,7 +3,14 @@ import sys
 import yaml
 import re
 
-db_inst_dir = os.path.expanduser("~/gitclones/riscv-unified-db/spec/std/isa/inst/")
+db_git_dir = os.environ.get("RISCV_UNIFIED_DB_GIT_DIR", None)
+if db_git_dir is None:
+    print("Please set RISCV_UNIFIED_DB_GIT_DIR environment variable to the path of your local git clone of riscv-unified-db", file=sys.stderr)
+    sys.exit(1)
+
+db_git_dir = os.path.expanduser(db_git_dir)
+
+db_inst_dir = os.path.join(db_git_dir, "spec/std/isa/inst/")
 
 ignore_insts = set([
     "fence",
