@@ -212,6 +212,8 @@ inline uint32_t _op_sra32(uint32_t value, uint32_t shamt) {
   if (shamt >= 32) {
     return (value & 0x80000000) ? 0xFFFFFFFF : 0;
   } else {
+    if (shamt == 0)
+      return value;
     if (value & 0x80000000) {
       return (value >> shamt) | (~((uint32_t)0) << (32 - shamt));
     } else {
@@ -263,11 +265,11 @@ template <size_t N> struct Bits {
   bool operator[](size_t bitidx) const { return (value >> bitidx) & 0x1; }
 };
 
-inline bool operator<(word_t lhs, const Bits<MXLEN> &rhs){
-	return lhs < (word_t)rhs.value;
+inline bool operator<(word_t lhs, const Bits<MXLEN> &rhs) {
+  return lhs < (word_t)rhs.value;
 }
-inline bool operator<(const Bits<MXLEN> &lhs, const Bits<MXLEN> &rhs){
-	return lhs.value < rhs.value;
+inline bool operator<(const Bits<MXLEN> &lhs, const Bits<MXLEN> &rhs) {
+  return lhs.value < rhs.value;
 }
 using XReg = Bits<MXLEN>;
 
