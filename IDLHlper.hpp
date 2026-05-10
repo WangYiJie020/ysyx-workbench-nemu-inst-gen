@@ -263,15 +263,23 @@ template <size_t N> struct Bits {
     return Bits<N + shamt>(value << shamt);
   }
   bool operator[](size_t bitidx) const { return (value >> bitidx) & 0x1; }
+
+	bool operator==(const Bits<N> &other) const { 
+		constexpr dword_t mask = (N >= 64) ? ~0ull : ((1ull << N) - 1);
+		return (value & mask) == (other.value & mask);
+	}
 };
 
-inline bool operator<(word_t lhs, const Bits<MXLEN> &rhs) {
+using XReg = Bits<MXLEN>;
+inline bool operator==(const XReg &lhs, int rhs) { return lhs.value == (word_t)rhs; }
+inline bool operator==(const XReg &lhs, const Concat &rhs) { return lhs.value == rhs.value; }
+
+inline bool operator<(word_t lhs, const XReg &rhs) {
   return lhs < (word_t)rhs.value;
 }
-inline bool operator<(const Bits<MXLEN> &lhs, const Bits<MXLEN> &rhs) {
+inline bool operator<(const XReg &lhs, const XReg &rhs) {
   return lhs.value < rhs.value;
 }
-using XReg = Bits<MXLEN>;
 
 template <size_t N> inline sword_t sext(const Bits<N> &bits) {
   return sext(bits.value, N);
