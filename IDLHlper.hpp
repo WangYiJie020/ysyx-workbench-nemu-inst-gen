@@ -66,10 +66,12 @@ enum class ExtensionName {
   V,
   N,
   U,
+	B,
 };
 constexpr bool implemented(ExtensionName name) {
   switch (name) {
   case ExtensionName::M:
+	case ExtensionName::B:
     return true;
   default:
     return false;

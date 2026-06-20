@@ -19,8 +19,20 @@ ignore_insts = set([
     "ecall",
     "mret",
     "wfi",
-    # "ld","sd",
+    "ld","sd", "lwu",
+    # "slliw", "sllw", "sraiw", "sraw", "srlw",
+    # "divw", "divuw", "remw", "remuw",
 ])
+
+ignore_inst_patterns = [
+    r".*\.uw",
+    r"\b(?!(?:lw|sw)\b)\w*w\b", # ignore instructions with w suffix but not lw/sw
+]
+
+def should_ignore_inst(inst_name:str) -> bool:
+    return inst_name in ignore_insts or any(
+        re.fullmatch(pattern, inst_name) for pattern in ignore_inst_patterns
+    )
 
 def add_tab(s:str) -> str:
     return '\n'.join(['\t' + line for line in s.splitlines()])
@@ -170,6 +182,7 @@ def generate_for_inst(ext_name:str,inst_name:str) -> str:
     # replace CSR[csr_name]
     # op = re.sub(r"CSR\[(\w+)\]", lambda m: f"CSR[CSR_{m.group(1).upper()}]", op)
     op = re.sub(r"CSR\[misa\]\.M", "Bits<1>(1)", op)
+    op = re.sub(r"CSR\[misa\]\.B", "Bits<1>(1)", op)
     op = re.sub(r"CSR\[(\w+)\].(\w+)", "false /* CSR[\\1].\\2 not implemented */", op)
 
     res += op
@@ -192,12 +205,13 @@ def gen_ext(ext_name:str):
     for files in os.listdir(os.path.join(db_inst_dir, ext_name)):
         if files.endswith(".yaml"):
             inst_name = files[:-5] 
-            if inst_name in ignore_insts:
+            if should_ignore_inst(inst_name):
                 continue
             print(add_tab(generate_for_inst(ext_name, inst_name)))
 
 gen_ext("I")
 gen_ext("M")
+gen_ext("Zba")
 # gen_ext("Zicsr")
 
 print("\n\tFINISH();")
