@@ -2,6 +2,7 @@
 #include <assert.h>
 #include <bitset>
 #include <charconv>
+#include <cstdint>
 #include <functional>
 #include <initializer_list>
 #include <stddef.h>
@@ -137,13 +138,12 @@ using RegFile = word_t[];
 extern "C" word_t vaddr_read(word_t address, int size);
 extern "C" void vaddr_write(word_t address, int size, word_t value);
 
-template <size_t N> word_t read_memory(uint32_t address, int encoding) {
-  static_assert(N % 8 == 0);
+inline word_t read_memory(int N,uint32_t address, int encoding) {
+  assert(N % 8 == 0);
   return vaddr_read(address, N / 8);
 }
-template <size_t N>
-void write_memory(uint32_t address, uint32_t value, int encoding) {
-  static_assert(N % 8 == 0);
+inline void write_memory(int N,uint32_t address, uint32_t value, int encoding) {
+  assert(N % 8 == 0);
   vaddr_write(address, N / 8, value);
 }
 
@@ -291,6 +291,16 @@ inline Concat sext(const Concat &c) {
   return Concat(MXLEN, sext(c.value, c.len));
 }
 
+inline sword_t highest_set_bit(word_t x)
+{
+    return x == 0 ? -1 : 31 - __builtin_clz(x);
+}
+inline uint32_t lowest_set_bit(uint32_t value)
+{
+    return value == 0 ? 32 : __builtin_ctz(value);
+}
+using U32 = uint32_t;
+
 template <size_t N> struct Repl {
   dword_t value;
   operator Bits<N>() const { return Bits<N>(value); }
@@ -302,4 +312,8 @@ template <size_t N> struct Repl {
       value |= bits.value;
     }
   }
+	Repl(unsigned long v) {
+		assert(v==0||v==1);
+		*this = Repl(Bits<1>(v));
+	}
 };
