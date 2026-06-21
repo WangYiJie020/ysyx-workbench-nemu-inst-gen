@@ -67,12 +67,12 @@ enum class ExtensionName {
   V,
   N,
   U,
-	B,
+  B,
 };
 constexpr bool implemented(ExtensionName name) {
   switch (name) {
   case ExtensionName::M:
-	case ExtensionName::B:
+  case ExtensionName::B:
     return true;
   default:
     return false;
@@ -138,11 +138,12 @@ using RegFile = word_t[];
 extern "C" word_t vaddr_read(word_t address, int size);
 extern "C" void vaddr_write(word_t address, int size, word_t value);
 
-inline word_t read_memory(int N,uint32_t address, int encoding) {
+inline word_t read_memory(int N, uint32_t address, int encoding) {
   assert(N % 8 == 0);
   return vaddr_read(address, N / 8);
 }
-inline void write_memory(int N,uint32_t address, uint32_t value, int encoding) {
+inline void write_memory(int N, uint32_t address, uint32_t value,
+                         int encoding) {
   assert(N % 8 == 0);
   vaddr_write(address, N / 8, value);
 }
@@ -186,8 +187,11 @@ template <typename R, typename L, typename R2> struct _OpFuncTraits<R(L, R2)> {
   using Ret = R;
 };
 
-template <typename R, typename L, typename R2>
-struct _OpFuncTraits<R (*)(L, R2)> : _OpFuncTraits<R(L, R2)> {};
+template <typename Ret, typename L, typename R>
+struct _OpFuncTraits<Ret (*)(L, R)> : _OpFuncTraits<Ret(L, R)> {};
+
+template <typename Ret, typename L, typename R>
+struct _OpFuncTraits<std::function<Ret(L, R)>> : _OpFuncTraits<Ret(L, R)> {};
 
 template <typename Func> struct _OpFunc_Wrap {
   using traits = _OpFuncTraits<Func>;
@@ -225,12 +229,6 @@ inline uint32_t _op_sra32(uint32_t value, uint32_t shamt) {
 }
 #define Sra *_Wrap(_op_sra32) >>
 
-inline auto _op_selbits(dword_t value, std::pair<int, int> rng) {
-  return selbits(value, rng.first, rng.second);
-}
-#define Rng(high, low) _Wrap(_op_selbits) * std::make_pair((high), (low))
-#define At(bit) Rng((bit), (bit))
-
 struct Concat {
   size_t len;
   dword_t value;
@@ -266,15 +264,19 @@ template <size_t N> struct Bits {
   }
   bool operator[](size_t bitidx) const { return (value >> bitidx) & 0x1; }
 
-	bool operator==(const Bits<N> &other) const { 
-		constexpr dword_t mask = (N >= 64) ? ~0ull : ((1ull << N) - 1);
-		return (value & mask) == (other.value & mask);
-	}
+  bool operator==(const Bits<N> &other) const {
+    constexpr dword_t mask = (N >= 64) ? ~0ull : ((1ull << N) - 1);
+    return (value & mask) == (other.value & mask);
+  }
 };
 
 using XReg = Bits<MXLEN>;
-inline bool operator==(const XReg &lhs, int rhs) { return lhs.value == (word_t)rhs; }
-inline bool operator==(const XReg &lhs, const Concat &rhs) { return lhs.value == rhs.value; }
+inline bool operator==(const XReg &lhs, int rhs) {
+  return lhs.value == (word_t)rhs;
+}
+inline bool operator==(const XReg &lhs, const Concat &rhs) {
+  return lhs.value == rhs.value;
+}
 
 inline bool operator<(word_t lhs, const XReg &rhs) {
   return lhs < (word_t)rhs.value;
@@ -282,6 +284,17 @@ inline bool operator<(word_t lhs, const XReg &rhs) {
 inline bool operator<(const XReg &lhs, const XReg &rhs) {
   return lhs.value < rhs.value;
 }
+
+template <size_t high, size_t low, typename RetBits = Bits<high - low + 1>,
+          typename Func = std::function<RetBits(word_t, void *)>>
+_OpFunc_Wrap<Func> _MakeRng() {
+	return _OpFunc_Wrap<Func>([](word_t value, void *) {
+    return RetBits(selbits(value, high, low));
+  });
+}
+
+#define Rng(high, low) _MakeRng<high, low>() * ((void *)0)
+#define At(bit) Rng((bit), (bit))
 
 template <size_t N> inline sword_t sext(const Bits<N> &bits) {
   return sext(bits.value, N);
@@ -291,13 +304,11 @@ inline Concat sext(const Concat &c) {
   return Concat(MXLEN, sext(c.value, c.len));
 }
 
-inline sword_t highest_set_bit(word_t x)
-{
-    return x == 0 ? -1 : 31 - __builtin_clz(x);
+inline sword_t highest_set_bit(word_t x) {
+  return x == 0 ? -1 : 31 - __builtin_clz(x);
 }
-inline uint32_t lowest_set_bit(uint32_t value)
-{
-    return value == 0 ? 32 : __builtin_ctz(value);
+inline uint32_t lowest_set_bit(uint32_t value) {
+  return value == 0 ? 32 : __builtin_ctz(value);
 }
 using U32 = uint32_t;
 
@@ -312,8 +323,8 @@ template <size_t N> struct Repl {
       value |= bits.value;
     }
   }
-	Repl(unsigned long v) {
-		assert(v==0||v==1);
-		*this = Repl(Bits<1>(v));
-	}
+  Repl(unsigned long v) {
+    assert(v == 0 || v == 1);
+    *this = Repl(Bits<1>(v));
+  }
 };
