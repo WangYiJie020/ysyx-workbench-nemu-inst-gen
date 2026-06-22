@@ -325,6 +325,14 @@ struct DynamicBitsSlice {
 	operator dword_t() const {
 		return selbits(*value, high, low);
 	}
+	operator XReg() const {
+		return XReg(selbits(*value, high, low));
+	}
+
+
+	bool operator==(int other) const {
+		return selbits(*value, high, low) == (dword_t)other;
+	}
 
 	// Get the mask for the slice, with bits set to 1 in the range `[low, high]` and 0 elsewhere
 	dword_t mask() const {

@@ -225,8 +225,9 @@ def generate_for_inst(ext_name:str,inst_name:str) -> str:
     op = re.sub(r"\(xlen\(\) == 32\) \? (.*) : (.*);", r"\1;", op)
 
     # Dynamic bit selection
-    op = re.sub(r"Rng\(\(i\+7\), i\)", "DynRng(i+7, i)", op)
+    op = re.sub(r"Rng\(\(?i\+(\d)\)?, i\)", r"DynRng(i+\1, i)", op)
     op = re.sub(r"Rng\(j, \(j-7\)\)", "DynRng(j, j-7)", op)
+    op = re.sub(r"Rng\((\d\*\w+\+\d*), (\d\*\w+)\)", r"DynRng(\1, \2)", op)
 
     # Patch
 
@@ -269,7 +270,7 @@ gen_ext("B") # To get full Zbb support
 gen_ext("Zbb")
 gen_ext("Zbc")
 gen_ext("Zbs")
-# gen_ext("Zbkx")
+gen_ext("Zbkx")
 # gen_ext("Zicsr")
 
 print("\n\tFINISH();")
