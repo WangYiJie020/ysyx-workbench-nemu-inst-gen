@@ -219,7 +219,7 @@ def generate_for_inst(ext_name:str,inst_name:str) -> str:
     if inst_name == "rori":
         op = re.sub(r"XReg shamt", "shamt", op) # fix `XReg shamt = .. shamt`
 
-    if inst_name == "clmul" or inst_name == "clmulh":
+    if inst_name == "clmul" or inst_name == "clmulh" or inst_name == "clmulr":
         op = re.sub(r": output;", ": (dword_t)output;",op) # fix XReg and dword_t ambigious
 
     res += op
@@ -250,10 +250,9 @@ gen_ext("I")
 gen_ext("M")
 # zba, zbb, zbc, zbs, zbkb 和 zbkx
 gen_ext("Zba")
-# gen_ext("Zbkb")
 gen_ext("B") # To get full Zbb support
 gen_ext("Zbb")
-# gen_ext("Zbc")
+gen_ext("Zbc")
 # gen_ext("Zbs")
 # gen_ext("Zbkb")
 # gen_ext("Zbkx")
