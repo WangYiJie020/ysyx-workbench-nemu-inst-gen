@@ -33,6 +33,12 @@ ignore_inst_patterns = [
     r"\b(?!(?:lw|sw)\b)\w*w\b", # ignore instructions with w suffix but not lw/sw
 ]
 
+upper_name_RV32_list = [
+    "RORI","REV8",
+    "BCLRI", "BEXTI", "BINVI", "BSETI",
+]
+
+
 def should_ignore_inst(inst_name:str) -> bool:
     return inst_name in ignore_insts or any(
         re.fullmatch(pattern, inst_name) for pattern in ignore_inst_patterns
@@ -118,10 +124,8 @@ def generate_for_inst(ext_name:str,inst_name:str) -> str:
             return f"// skip {upper_name} because it has encoding in Zbkb\n"
         upper_name = "PACK /* aka ZEXT.H ZEXT_H_RV32 */"
 
-    if upper_name == "RORI":
-        upper_name = "RORI_RV32"
-    if upper_name == "REV8":
-        upper_name = "REV8_RV32"
+    if upper_name in upper_name_RV32_list:
+        upper_name += "_RV32"
 
     res = ""
 
@@ -253,7 +257,7 @@ gen_ext("Zba")
 gen_ext("B") # To get full Zbb support
 gen_ext("Zbb")
 gen_ext("Zbc")
-# gen_ext("Zbs")
+gen_ext("Zbs")
 # gen_ext("Zbkb")
 # gen_ext("Zbkx")
 # gen_ext("Zicsr")
