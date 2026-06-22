@@ -165,6 +165,16 @@ def generate_for_inst(ext_name:str,inst_name:str) -> str:
     var_name_pattern = "[a-zA-Z_][a-zA-Z0-9_]*"
 
     op = data["operation()"]
+
+    if len(str(op)) < 10:
+        print(f"Warning: instruction {inst_name} has very short operation, maybe not implemented yet", file=sys.stderr)
+        if upper_name == "PACK": # Patch current PACK instruction no operation field
+            print(f"Info: manually patching PACK instruction operation field", file=sys.stderr)
+            op = "X[xd] = {X[xs2][15:0], X[xs1][15:0]};"
+        if upper_name == "PACKH":
+            print(f"Info: manually patching PACKH instruction operation field", file=sys.stderr)
+            op = "X[xd] = {X[xs2][7:0], X[xs1][7:0]};"
+
     # op = re.sub(r"Bits<(.*)>", lambda m: expr_typename_of_width(m.group(1)), op)
     op = re.sub(">>>", "Sra", op)
 
@@ -253,12 +263,12 @@ def gen_ext(ext_name:str):
 gen_ext("I")
 gen_ext("M")
 # zba, zbb, zbc, zbs, zbkb 和 zbkx
+gen_ext("Zbkb") # Zbkb should before ZEXT_H
 gen_ext("Zba")
 gen_ext("B") # To get full Zbb support
 gen_ext("Zbb")
 gen_ext("Zbc")
 gen_ext("Zbs")
-# gen_ext("Zbkb")
 # gen_ext("Zbkx")
 # gen_ext("Zicsr")
 

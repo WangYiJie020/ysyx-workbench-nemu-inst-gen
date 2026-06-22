@@ -264,7 +264,25 @@ template <size_t N> struct Bits {
   template <size_t shamt> Bits<N + shamt> lshift_extend() const {
     return Bits<N + shamt>(value << shamt);
   }
-  bool operator[](size_t bitidx) const { return (value >> bitidx) & 0x1; }
+
+	struct BitRef {
+		dword_t *value;
+		size_t bitidx;
+		operator bool() const { return (*value >> bitidx) & 0x1; }
+		BitRef& operator=(BitRef other){
+			return *this = bool(other);
+		}
+		BitRef& operator=(bool b) {
+			if (b) {
+				*value |= (1ull << bitidx);
+			} else {
+				*value &= ~(1ull << bitidx);
+			}
+			return *this;
+		}
+	};
+  // bool operator[](size_t bitidx) const { return (value >> bitidx) & 0x1; }
+	BitRef operator[](size_t bitidx) { return BitRef{&value, bitidx}; }
 
   bool operator==(const Bits<N> &other) const {
     return (value & mask) == (other.value & mask);
