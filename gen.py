@@ -13,6 +13,10 @@ db_git_dir = os.path.expanduser(db_git_dir)
 db_inst_dir = os.path.join(db_git_dir, "spec/std/isa/inst/")
 
 ignore_insts = set([
+    # Currently unsupported generation, since X[..]=xxx not supported
+    # "orc.b", 
+    # "rev8",
+
     "fence",
     "fence.tso",
     "ebreak",
@@ -87,6 +91,7 @@ def replace_idl_builtin(match):
     var_name = match.group(1)
     return idl_mappings.get(var_name, "$"+var_name)
 
+has_rv_zbkb = False
 
 def generate_for_inst(ext_name:str,inst_name:str) -> str:
     filename = os.path.join(db_inst_dir, ext_name, f"{inst_name}.yaml")
@@ -94,13 +99,29 @@ def generate_for_inst(ext_name:str,inst_name:str) -> str:
     with open(filename, "r", encoding="utf-8") as f:
         data = yaml.safe_load(f)
 
-    encoding = data["encoding"]
+    encoding = data.get("encoding", {})
+
+    if "encoding" not in data:
+        print(f"Warning: instruction {inst_name} has no encoding, using default rd/rs1/rs2", file=sys.stderr)
+
     enc_vars = encoding.get("variables", [])
     if encoding.get("RV32", None):
         enc_vars = encoding["RV32"].get("variables", enc_vars)
 
+    if ext_name == "Zbkb":
+        global has_rv_zbkb
+        has_rv_zbkb = True
 
-    upper_name = inst_name.upper()
+    upper_name = inst_name.upper().replace(".", "_")
+    if upper_name == "ZEXT_H":
+        if has_rv_zbkb:
+            return f"// skip {upper_name} because it has encoding in Zbkb\n"
+        upper_name = "PACK /* aka ZEXT.H ZEXT_H_RV32 */"
+
+    if upper_name == "RORI":
+        upper_name = "RORI_RV32"
+    if upper_name == "REV8":
+        upper_name = "REV8_RV32"
 
     res = ""
 
@@ -158,7 +179,7 @@ def generate_for_inst(ext_name:str,inst_name:str) -> str:
     # replace Verilog style bit selection
     op = re.sub(r"\[([^:\[\]]*):([^\[\]]*)\]", r" * Rng(\1, \2)", op)
     # replace Verilog single bit selection
-    op = re.sub(r"\]\[(.*)\]", r"] * At(\1)", op)
+    op = re.sub(r"\]\[(.*?)\]", r"] * At(\1)", op)
 
     # replace Verilog n{} style replication
     op = re.sub(r"{([\w\d\(\)+-]+)\{", r"{Repl<\1>{", op)
@@ -184,6 +205,22 @@ def generate_for_inst(ext_name:str,inst_name:str) -> str:
     op = re.sub(r"CSR\[misa\]\.M", "Bits<1>(1)", op)
     op = re.sub(r"CSR\[misa\]\.B", "Bits<1>(1)", op)
     op = re.sub(r"CSR\[(\w+)\].(\w+)", "false /* CSR[\\1].\\2 not implemented */", op)
+
+    # Fix rv32 ? Bits<A> : Bits<B> to only return Bits<A>
+    # To avoid ambiguity of return type
+    op = re.sub(r"\(xlen\(\) == 32\) \? (.*) : (.*);", r"\1;", op)
+
+    # Dynamic bit selection
+    op = re.sub(r"Rng\(\(i\+7\), i\)", "DynRng(i+7, i)", op)
+    op = re.sub(r"Rng\(j, \(j-7\)\)", "DynRng(j, j-7)", op)
+
+    # Patch
+
+    if inst_name == "rori":
+        op = re.sub(r"XReg shamt", "shamt", op) # fix `XReg shamt = .. shamt`
+
+    if inst_name == "clmul" or inst_name == "clmulh":
+        op = re.sub(r": output;", ": (dword_t)output;",op) # fix XReg and dword_t ambigious
 
     res += op
     res = add_tab(res)
@@ -211,7 +248,15 @@ def gen_ext(ext_name:str):
 
 gen_ext("I")
 gen_ext("M")
+# zba, zbb, zbc, zbs, zbkb 和 zbkx
 gen_ext("Zba")
+# gen_ext("Zbkb")
+gen_ext("B") # To get full Zbb support
+gen_ext("Zbb")
+# gen_ext("Zbc")
+# gen_ext("Zbs")
+# gen_ext("Zbkb")
+# gen_ext("Zbkx")
 # gen_ext("Zicsr")
 
 print("\n\tFINISH();")

@@ -28,7 +28,7 @@ testcompile: IDLHlper.hpp $(OUT_CC)
 	rm $(BUILD_DIR)/testcompile
 
 .DELETE_ON_ERROR:
-$(OUT_CC): gen.py
+$(OUT_CC): gen.py IDLHlper.hpp
 	$(PYTHON) gen.py > $(OUT_CC)
 
 geninc: $(OUT_CC)

@@ -170,7 +170,7 @@ inline sword_t sext(word_t value, int width) {
 #endif
 }
 
-inline dword_t selbits(dword_t value, int high, int low) {
+inline constexpr dword_t selbits(dword_t value, int high, int low) {
   if (high >= (int)(sizeof(dword_t) * 8 - 1) && low == 0)
     return value;
   dword_t mask = ((WIDER_UNIT << (high - low + 1)) - 1) << low;
@@ -254,6 +254,8 @@ template <size_t N> struct Bits {
   constexpr operator dword_t() const { return value; }
   constexpr operator Concat() const { return Concat(N, value); }
 
+	static constexpr dword_t mask = (N >= 64) ? ~0ull : ((1ull << N) - 1);
+
   Bits(const Concat &c) : value(c.value) {}
 
   template <size_t M> Bits(const Bits<M> &other) : value(other.value) {}
@@ -265,9 +267,12 @@ template <size_t N> struct Bits {
   bool operator[](size_t bitidx) const { return (value >> bitidx) & 0x1; }
 
   bool operator==(const Bits<N> &other) const {
-    constexpr dword_t mask = (N >= 64) ? ~0ull : ((1ull << N) - 1);
     return (value & mask) == (other.value & mask);
   }
+
+	Bits<N> operator~() const {
+		return Bits<N>(~value & mask);
+	}
 };
 
 using XReg = Bits<MXLEN>;
@@ -293,6 +298,42 @@ _OpFunc_Wrap<Func> _MakeRng() {
   });
 }
 
+struct DynamicBitsSlice {
+	size_t high = 0;
+	size_t low = 0;
+	dword_t* value = nullptr;
+	DynamicBitsSlice() = default;
+	DynamicBitsSlice(size_t h, size_t l, dword_t* v = nullptr) : high(h), low(l), value(v) {}
+	operator dword_t() const {
+		return selbits(*value, high, low);
+	}
+
+	// Get the mask for the slice, with bits set to 1 in the range `[low, high]` and 0 elsewhere
+	dword_t mask() const {
+		return selbits(~0ull, high, low) << low;
+	}
+	// Get the value of the slice
+	// `value[high-low, 0] = ref[high:low]`
+	dword_t get() const {
+		return selbits(*value, high, low);
+	}
+
+	DynamicBitsSlice operator=(DynamicBitsSlice other) {
+		*value = (*value & ~mask()) | (other.get() << low);
+		return *this;
+	}
+	DynamicBitsSlice operator=(dword_t other) {
+		*value = (*value & ~mask()) | (selbits(other, high - low, 0) << low);
+		return *this;
+	}
+};
+
+inline DynamicBitsSlice operator*(XReg& v, DynamicBitsSlice slice) {
+	slice.value = &v.value;
+	return slice;
+}
+
+#define DynRng(high, low) DynamicBitsSlice((high), (low))
 #define Rng(high, low) _MakeRng<high, low>() * ((void *)0)
 #define At(bit) Rng((bit), (bit))
 
