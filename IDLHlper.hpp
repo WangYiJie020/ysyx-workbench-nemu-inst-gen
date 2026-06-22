@@ -309,9 +309,9 @@ inline bool operator<(const XReg &lhs, const XReg &rhs) {
 }
 
 template <size_t high, size_t low, typename RetBits = Bits<high - low + 1>,
-          typename Func = std::function<RetBits(word_t, void *)>>
+          typename Func = std::function<RetBits(dword_t, void *)>>
 _OpFunc_Wrap<Func> _MakeRng() {
-	return _OpFunc_Wrap<Func>([](word_t value, void *) {
+	return _OpFunc_Wrap<Func>([](dword_t value, void *) {
     return RetBits(selbits(value, high, low));
   });
 }
