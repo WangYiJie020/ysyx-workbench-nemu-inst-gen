@@ -11,6 +11,10 @@ if db_git_dir is None:
 db_git_dir = os.path.expanduser(db_git_dir)
 
 db_inst_dir = os.path.join(db_git_dir, "spec/std/isa/inst/")
+encoding_header = os.path.join(os.path.dirname(__file__), "encoding.out.h")
+
+with open(encoding_header, "r", encoding="utf-8") as f:
+    available_insts = set(re.findall(r"^#define MATCH_([A-Z0-9_]+) ", f.read(), re.MULTILINE))
 
 ignore_insts = set([
     # Currently unsupported generation, since X[..]=xxx not supported
@@ -30,7 +34,7 @@ ignore_insts = set([
 
 ignore_inst_patterns = [
     r".*\.uw",
-    r"\b(?!(?:lw|sw)\b)\w*w\b", # ignore instructions with w suffix but not lw/sw
+    r"\b(?!(?:lw|sw|flw|fsw)\b)\w*w\b", # ignore RV64 word ops, but keep 32-bit loads/stores
 ]
 
 upper_name_RV32_list = [
@@ -119,6 +123,8 @@ def generate_for_inst(ext_name:str,inst_name:str) -> str:
         has_rv_zbkb = True
 
     upper_name = inst_name.upper().replace(".", "_")
+    if upper_name not in available_insts:
+        return f"// skip {upper_name} because it is not available in encoding.out.h\n"
     if upper_name == "ZEXT_H":
         if has_rv_zbkb:
             return f"// skip {upper_name} because it has encoding in Zbkb\n"
@@ -213,6 +219,27 @@ def generate_for_inst(ext_name:str,inst_name:str) -> str:
     # replace IDL xxx? blocks
     op = re.sub(r"implemented\?", "implemented", op)
     op = re.sub(r"compatible_mode\?", "compatible_mode", op)
+    op = re.sub(r"\b([a-zA-Z_][a-zA-Z0-9_]*)\?", r"\1", op)
+    op = op.replace("`<<", "<<")
+    op = re.sub(r"assert\((.*?),\s*\".*?\"\)", r"assert(\1)", op)
+    op = re.sub(
+        r"Bits<1>\s+(\w+)\s*=\s*(\w+)\[(\d+)\];",
+        r"Bits<1> \1 = Bits<1>(\2[\3] ? 1 : 0);",
+        op,
+    )
+
+    fp_helpers = [
+        "check_f_ok", "rm_to_mode", "nan_box", "mark_f_state_dirty",
+        "set_fp_flag", "f32_add", "f32_sub", "f32_mul", "f32_div",
+        "f32_sqrt", "f32_muladd", "f32_to_i32", "f32_to_ui32",
+        "i32_to_f32", "ui32_to_f32", "is_sp_neg_inf",
+        "is_sp_neg_norm", "is_sp_neg_subnorm", "is_sp_neg_zero",
+        "is_sp_pos_zero", "is_sp_pos_subnorm", "is_sp_pos_norm",
+        "is_sp_pos_inf", "is_sp_signaling_nan", "is_sp_quiet_nan",
+        "is_sp_nan",
+    ]
+    for helper in fp_helpers:
+        op = re.sub(rf"\b{helper}\s*\(", f"idl::{helper}(", op)
 
     # replace CSR[csr_name]
     # op = re.sub(r"CSR\[(\w+)\]", lambda m: f"CSR[CSR_{m.group(1).upper()}]", op)
@@ -249,8 +276,10 @@ print("""// Auto-generated code
 #include "IDLHlper.hpp"
 
 // return 0 if instruction matched and executed
-extern "C" int execute_instruction(word_t ENCODING_INST, word_t* pc, word_t* regs) {
+extern "C" int execute_instruction(word_t ENCODING_INST, word_t* pc, word_t* regs,
+                                   uint64_t* fregs, word_t* fcsr) {
   INIT();
+  try {
 """)
 
 def gen_ext(ext_name:str):
@@ -271,7 +300,12 @@ gen_ext("Zbb")
 gen_ext("Zbc")
 gen_ext("Zbs")
 gen_ext("Zbkx")
+gen_ext("F")
 # gen_ext("Zicsr")
 
 print("\n\tFINISH();")
+print("""  } catch (const idl::IllegalInstruction &) {
+    *pc = idl::handle_illegal_instruction();
+    return EXEC_SUCCESS;
+  }""")
 print("}")

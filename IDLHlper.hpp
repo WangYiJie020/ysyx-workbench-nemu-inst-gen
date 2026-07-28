@@ -18,6 +18,8 @@
 
 #define INIT()                                                                 \
   auto X = regs;                                                               \
+  FRegFile F(fregs);                                                           \
+  idl::FpContextScope fp_scope(fcsr, pc, ENCODING_INST);                       \
   Bits<5> xs2 = Bits<5>(InstRng(24, 20));                                      \
   Bits<5> xs1 = Bits<5>(InstRng(19, 15));                                      \
   Bits<5> xd = Bits<5>(InstRng(11, 7));                                        \
@@ -63,6 +65,7 @@ enum class ExtensionName {
   Zilsd,
   Zclsd,
   M,
+  F,
   D,
   V,
   N,
@@ -72,6 +75,8 @@ enum class ExtensionName {
 constexpr bool implemented(ExtensionName name) {
   switch (name) {
   case ExtensionName::M:
+  case ExtensionName::F:
+  case ExtensionName::D:
   case ExtensionName::B:
     return true;
   default:
@@ -132,6 +137,93 @@ using dword_t = uint64_t;
 #define WIDE_MUL *WIDER_UNIT *
 
 using RegFile = word_t[];
+
+template <size_t N> struct Bits;
+
+enum class RoundingMode : uint8_t {
+  RNE = 0,
+  RTZ = 1,
+  RDN = 2,
+  RUP = 3,
+  RMM = 4,
+};
+
+enum class FpFlag : uint8_t {
+  NX = 1,
+  UF = 2,
+  OF = 4,
+  DZ = 8,
+  NV = 16,
+};
+
+enum class F32MulAddOp : uint8_t {
+  Softfloat_mulAdd_addC,
+  Softfloat_mulAdd_subC,
+  Softfloat_mulAdd_subProd,
+};
+
+constexpr uint32_t SP_CANONICAL_NAN = UINT32_C(0x7fc00000);
+
+namespace idl {
+class IllegalInstruction {};
+
+class FpContextScope {
+public:
+  FpContextScope(word_t *fcsr, word_t *pc, word_t instruction);
+  ~FpContextScope();
+};
+
+void check_f_ok(word_t instruction);
+RoundingMode rm_to_mode(uint32_t rm, word_t instruction);
+word_t handle_illegal_instruction();
+void mark_f_state_dirty();
+void set_fp_flag(FpFlag flag);
+
+Bits<64> nan_box(uint32_t narrow_width, uint32_t width, Bits<32> value);
+Bits<32> f32_add(Bits<32> a, Bits<32> b, RoundingMode mode);
+Bits<32> f32_sub(Bits<32> a, Bits<32> b, RoundingMode mode);
+Bits<32> f32_mul(Bits<32> a, Bits<32> b, RoundingMode mode);
+Bits<32> f32_div(Bits<32> a, Bits<32> b, RoundingMode mode);
+Bits<32> f32_sqrt(Bits<32> a, RoundingMode mode);
+Bits<32> f32_muladd(Bits<32> a, Bits<32> b, Bits<32> c,
+                    F32MulAddOp op, RoundingMode mode);
+int32_t f32_to_i32(Bits<32> a, RoundingMode mode);
+uint32_t f32_to_ui32(Bits<32> a, RoundingMode mode);
+Bits<32> i32_to_f32(uint32_t a, RoundingMode mode);
+Bits<32> ui32_to_f32(uint32_t a, RoundingMode mode);
+
+bool is_sp_neg_inf(Bits<32> value);
+bool is_sp_neg_norm(Bits<32> value);
+bool is_sp_neg_subnorm(Bits<32> value);
+bool is_sp_neg_zero(Bits<32> value);
+bool is_sp_pos_zero(Bits<32> value);
+bool is_sp_pos_subnorm(Bits<32> value);
+bool is_sp_pos_norm(Bits<32> value);
+bool is_sp_pos_inf(Bits<32> value);
+bool is_sp_signaling_nan(Bits<32> value);
+bool is_sp_quiet_nan(Bits<32> value);
+bool is_sp_nan(Bits<32> value);
+}
+
+class FRegRef {
+  uint64_t *value;
+
+public:
+  explicit FRegRef(uint64_t *value) : value(value) {}
+  operator dword_t() const { return value[0]; }
+  operator Bits<32>() const;
+
+  FRegRef &operator=(dword_t rhs);
+  template <size_t N> FRegRef &operator=(Bits<N> rhs);
+};
+
+class FRegFile {
+  uint64_t *fregs;
+
+public:
+  explicit FRegFile(uint64_t *fregs) : fregs(fregs) {}
+  FRegRef operator[](size_t index) { return FRegRef(&fregs[index * 2]); }
+};
 
 // wrap IDL call outer functions
 
@@ -287,16 +379,32 @@ template <size_t N> struct Bits {
   bool operator==(const Bits<N> &other) const {
     return (value & mask) == (other.value & mask);
   }
+  bool operator==(dword_t other) const {
+    return (value & mask) == (other & mask);
+  }
+  bool operator==(int other) const { return *this == (dword_t)other; }
+  bool operator!=(dword_t other) const { return !(*this == other); }
+  bool operator!=(int other) const { return !(*this == other); }
 
 	Bits<N> operator~() const {
 		return Bits<N>(~value & mask);
 	}
 };
 
-using XReg = Bits<MXLEN>;
-inline bool operator==(const XReg &lhs, int rhs) {
-  return lhs.value == (word_t)rhs;
+inline FRegRef::operator Bits<32>() const { return Bits<32>(value[0]); }
+
+inline FRegRef &FRegRef::operator=(dword_t rhs) {
+  return *this = Bits<32>(rhs);
 }
+
+template <size_t N> FRegRef &FRegRef::operator=(Bits<N> rhs) {
+  value[0] = UINT64_C(0xffffffff00000000) | (uint32_t)rhs.value;
+  value[1] = UINT64_MAX;
+  idl::mark_f_state_dirty();
+  return *this;
+}
+
+using XReg = Bits<MXLEN>;
 inline bool operator==(const XReg &lhs, const Concat &rhs) {
   return lhs.value == rhs.value;
 }
