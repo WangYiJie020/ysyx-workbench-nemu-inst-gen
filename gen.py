@@ -123,15 +123,16 @@ def generate_for_inst(ext_name:str,inst_name:str) -> str:
         has_rv_zbkb = True
 
     upper_name = inst_name.upper().replace(".", "_")
-    if upper_name not in available_insts:
-        return f"// skip {upper_name} because it is not available in encoding.out.h\n"
     if upper_name == "ZEXT_H":
         if has_rv_zbkb:
             return f"// skip {upper_name} because it has encoding in Zbkb\n"
-        upper_name = "PACK /* aka ZEXT.H ZEXT_H_RV32 */"
+        upper_name = "PACK"
 
     if upper_name in upper_name_RV32_list:
         upper_name += "_RV32"
+
+    if upper_name not in available_insts:
+        return f"// skip {inst_name.upper().replace('.', '_')} because it is not available in encoding.out.h\n"
 
     res = ""
 
